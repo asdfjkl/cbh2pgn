@@ -147,3 +147,4 @@ else:
     print("cbg game bytes:")
     print([ hex(i) for i in cbg_file[game_offset + 4:game_offset + game_len]])
     game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, w_piece_lists, b_piece_lists)
+    print(game)

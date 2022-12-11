@@ -659,7 +659,7 @@ def decode(game_bytes, cb_position, w_piece_lists, b_piece_lists):
     game = chess.pgn.Game()
     node = game
     for idx in range(0, len(game_bytes)):
-        tkn = game_bytes[idx] - np.uint8(processed_moves)
+        tkn = bytes([game_bytes[idx]])[0] - bytes([processed_moves])[0]
         processed_moves += 1
         if node.board().turn == chess.WHITE:
             print("white to move")
@@ -759,7 +759,7 @@ def decode(game_bytes, cb_position, w_piece_lists, b_piece_lists):
                 node = do_b_pawn_move(b_pawns, 6, cb_position, CB_PAWN_G_ENC, node, tkn)
             elif tkn in CB_PAWN_H_ENC:
                 node = do_b_pawn_move(b_pawns, 7, cb_position, CB_PAWN_H_ENC, node, tkn)
-
+    return game
 
 
 """
