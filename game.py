@@ -635,7 +635,6 @@ CB_PAWN_H_ENC = {
 #               for pawns, all other pieces have absolute directions
 def do_move(piece_list, piece_type, piece_nr, cb_position, cb_enc_arr, node, tkn, pawn_flip=False):
     (i, j) = piece_list[piece_type][piece_nr]
-    target_piece_type, target_nr = cb_position[i][j]
     cb_position[i][j] = (0, None)
     (add_x, add_y) = cb_enc_arr[tkn]
     if pawn_flip:
@@ -645,11 +644,13 @@ def do_move(piece_list, piece_type, piece_nr, cb_position, cb_enc_arr, node, tkn
     j1 = (j + add_y) % 8
     # check what's on target square
     # and manipulate position accordingly
-    """
+    target_piece_type, target_nr = cb_position[i1][j1]
+    print("target piece type: "+str(target_piece_type))
+
     if target_piece_type != 0 and target_piece_type != W_KING and target_piece_type != B_KING \
             and target_piece_type != W_PAWN and target_piece_type != B_PAWN:
         if target_nr < 3: # in that case the next piece becomes the previous one
-            for nr in range(target_nr, 1):
+            for nr in range(target_nr, 2):
                 piece_list[target_piece_type][nr] = piece_list[target_piece_type][nr+1]
             piece_list[target_piece_type][2] = None
             # now update position
@@ -659,7 +660,7 @@ def do_move(piece_list, piece_type, piece_nr, cb_position, cb_enc_arr, node, tkn
                     if p == target_piece_type:
                         if target_nr < t < 3:
                             cb_position[x][y] = (p, t-1)
-    """
+
     cb_position[i1][j1] = (piece_type, piece_nr)
     piece_list[piece_type][piece_nr] = (i1, j1)
     # if we have castles, move the rook, too
@@ -708,7 +709,7 @@ def decode(game_bytes, cb_position, piece_list):
     game = chess.pgn.Game()
     node = game
     for idx in range(0, len(game_bytes)):
-        print(game)
+        #print(game)
         tkn = (game_bytes[idx] - processed_moves) % 256
         processed_moves += 1
         processed_moves %= 256
