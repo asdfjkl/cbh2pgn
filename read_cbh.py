@@ -32,7 +32,8 @@ def to_hex(ls):
 #DB_ROOT = "/home/user/MyFiles/workspace/test_databases/umlaut"
 #DB_ROOT = "/home/user/MyFiles/workspace/test_databases/yymmdd"
 #DB_ROOT = "/home/user/MyFiles/workspace/test_databases/start_pos"
-DB_ROOT = "/home/user/MyFiles/workspace/test_databases/f8_simple_game"
+#DB_ROOT = "/home/user/MyFiles/workspace/test_databases/f8_simple_game"
+DB_ROOT = "/home/user/MyFiles/workspace/test_databases/f8_simple_game_capture"
 #DB_ROOT = "/media/user/28CE7A31CE79F800/Users/Domin/Desktop/db_compare/f7_standard_custom"
 #DB_ROOT = "/media/user/28CE7A31CE79F800/Users/Domin/Desktop/db_compare/f13_960_init"
 
@@ -143,8 +144,8 @@ else:
         [ game.W_KNIGHT, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_KNIGHT ],
         [ game.W_ROOK, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_ROOK ]
     ]
-    cb_position, w_piece_lists, b_piece_lists = game.convert_pos_to_cb(initial_position)
+    cb_position, piece_list = game.convert_pos_to_cb(initial_position)
     print("cbg game bytes:")
     print([ hex(i) for i in cbg_file[game_offset + 4:game_offset + game_len]])
-    game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, w_piece_lists, b_piece_lists)
+    game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, piece_list)
     print(game)
