@@ -1,8 +1,8 @@
-import numpy as np
-from binascii import hexlify
 import struct
+
 # import chess
 import chess.pgn
+import numpy as np
 
 MASK_START_WITH_INITIAL = 0x40000000
 MASK_IS_ENCODED = 0x80000000
@@ -624,6 +624,18 @@ CB_PAWN_H_ENC = {
 }
 
 
+LOOKUP_2B = [
+    (0,0), (0,1), (0,2), (0,3), (0,4), (0,5), (0,6), (0,7),  # a1 ... a8
+    (1,0), (1,1), (1,2), (1,3), (1,4), (1,5), (1,6), (1,7),  # b1 ... b8
+    (2,0), (2,1), (2,2), (2,3), (2,4), (2,5), (2,6), (2,7),  # c1 ... c8
+    (3,0), (3,1), (3,2), (3,3), (3,4), (3,5), (3,6), (3,7),  # d1 ... d8
+    (4,0), (4,1), (4,2), (4,3), (4,4), (4,5), (4,6), (4,7),  # e1 ... e8
+    (5,0), (5,1), (5,2), (5,3), (5,4), (5,5), (5,6), (5,7),  # f1 ... f8
+    (6,0), (6,1), (6,2), (6,3), (6,4), (6,5), (6,6), (6,7),  # g1 ... g8
+    (7,0), (7,1), (7,2), (7,3), (7,4), (7,5), (7,6), (7,7)   # h1 ... h8
+]
+
+
 # piece_list  : w_queens, w_rooks, ...
 # cb_position : game position
 # piece_type  : W_KING, W_QUEEN, B_KING, B_QUEEN...
@@ -634,6 +646,8 @@ CB_PAWN_H_ENC = {
 # pawn_flip   : true for black pawns (need to consider direction from black's perspective
 #               for pawns, all other pieces have absolute directions
 def do_move(piece_list, piece_type, piece_nr, cb_position, cb_enc_arr, node, tkn, pawn_flip=False):
+    print("piece list do move")
+    print(piece_list[piece_type])
     (i, j) = piece_list[piece_type][piece_nr]
     cb_position[i][j] = (0, None)
     (add_x, add_y) = cb_enc_arr[tkn]
@@ -703,64 +717,203 @@ def do_move(piece_list, piece_type, piece_nr, cb_position, cb_enc_arr, node, tkn
     return node
 
 
-def decode(game_bytes, cb_position, piece_list):
+def do_2b_move(piece_list, i, j, i1, j1, cb_position, node):
+    piece_type, piece_nr = cb_position[i][j]
+    cb_position[i][j] = (0, None)
+    # check what's on target square
+    # and manipulate position accordingly
+    target_piece_type, target_nr = cb_position[i1][j1]
+    print("target piece type: "+str(target_piece_type))
+
+    if target_piece_type != 0 and target_piece_type != W_KING and target_piece_type != B_KING \
+            and target_piece_type != W_PAWN and target_piece_type != B_PAWN:
+        if target_nr < 3: # in that case the next piece becomes the previous one
+            for nr in range(target_nr, 2):
+                piece_list[target_piece_type][nr] = piece_list[target_piece_type][nr+1]
+            piece_list[target_piece_type][2] = None
+            # now update position
+            for x in range(0,8):
+                for y in range(0,8):
+                    p, t = cb_position[x][y]
+                    if p == target_piece_type:
+                        if target_nr < t < 3:
+                            cb_position[x][y] = (p, t-1)
+
+    cb_position[i1][j1] = (piece_type, piece_nr)
+    piece_list[piece_type][piece_nr] = (i1, j1)
+    # 2b move should usually never be castles
+    m = chess.Move.from_uci(SQN[i][j] + SQN[i1][j1])
+    print(SQN[i][j] + SQN[i1][j1])
+    node = node.add_variation(m)
+    return node
+
+
+
+
+
+# deobfuscation of 2 byte encoded moves
+# actually also used for 1 byte moves, but
+# we can just operate on the obfuscated values directly
+DEOBFUSCATE_2B = [
+    0XA2, 0X95, 0X43, 0XF5, 0XC1, 0X3D, 0X4A, 0X6C,	#   0 -   7
+    0X53, 0X83, 0XCC, 0X7C, 0XFF, 0XAE, 0X68, 0XAD,	#   8 -  15
+    0XD1, 0X92, 0X8B, 0X8D, 0X35, 0X81, 0X5E, 0X74,	#  16 -  23
+    0X26, 0X8E, 0XAB, 0XCA, 0XFD, 0X9A, 0XF3, 0XA0,	#  24 -  31
+    0XA5, 0X15, 0XFC, 0XB1, 0X1E, 0XED, 0X30, 0XEA,	#  32 -  39
+    0X22, 0XEB, 0XA7, 0XCD, 0X4E, 0X6F, 0X2E, 0X24,	#  40 -  47
+    0X32, 0X94, 0X41, 0X8C, 0X6E, 0X58, 0X82, 0X50,	#  48 -  55
+    0XBB, 0X02, 0X8A, 0XD8, 0XFA, 0X60, 0XDE, 0X52,	#  56 -  63
+    0XBA, 0X46, 0XAC, 0X29, 0X9D, 0XD7, 0XDF, 0X08,	#  64 -  71
+    0X21, 0X01, 0X66, 0XA3, 0XF1, 0X19, 0X27, 0XB5,	#  72 -  79
+    0X91, 0XD5, 0X42, 0X0E, 0XB4, 0X4C, 0XD9, 0X18,	#  80 -  87
+    0X5F, 0XBC, 0X25, 0XA6, 0X96, 0X04, 0X56, 0X6A,	#  88 -  95
+    0XAA, 0X33, 0X1C, 0X2B, 0X73, 0XF0, 0XDD, 0XA4,	#  96 - 103
+    0X37, 0XD3, 0XC5, 0X10, 0XBF, 0X5A, 0X23, 0X34,	# 104 - 111
+    0X75, 0X5B, 0XB8, 0X55, 0XD2, 0X6B, 0X09, 0X3A,	# 112 - 119
+    0X57, 0X12, 0XB3, 0X77, 0X48, 0X85, 0X9B, 0X0F,	# 120 - 127
+    0X9E, 0XC7, 0XC8, 0XA1, 0X7F, 0X7A, 0XC0, 0XBD,	# 128 - 135
+    0X31, 0X6D, 0XF6, 0X3E, 0XC3, 0X11, 0X71, 0XCE,	# 136 - 143
+    0X7D, 0XDA, 0XA8, 0X54, 0X90, 0X97, 0X1F, 0X44,	# 144 - 151
+    0X40, 0X16, 0XC9, 0XE3, 0X2C, 0XCB, 0X84, 0XEC,	# 152 - 159
+    0X9F, 0X3F, 0X5C, 0XE6, 0X76, 0X0B, 0X3C, 0X20,	# 160 - 167
+    0XB7, 0X36, 0X00, 0XDC, 0XE7, 0XF9, 0X4F, 0XF7,	# 168 - 175
+    0XAF, 0X06, 0X07, 0XE0, 0X1A, 0X0A, 0XA9, 0X4B,	# 176 - 183
+    0X0C, 0XD6, 0X63, 0X87, 0X89, 0X1D, 0X13, 0X1B,	# 184 - 191
+    0XE4, 0X70, 0X05, 0X47, 0X67, 0X7B, 0X2F, 0XEE,	# 192 - 199
+    0XE2, 0XE8, 0X98, 0X0D, 0XEF, 0XCF, 0XC4, 0XF4,	# 200 - 207
+    0XFB, 0XB0, 0X17, 0X99, 0X64, 0XF2, 0XD4, 0X2A,	# 208 - 215
+    0X03, 0X4D, 0X78, 0XC6, 0XFE, 0X65, 0X86, 0X88,	# 216 - 223
+    0X79, 0X45, 0X3B, 0XE5, 0X49, 0X8F, 0X2D, 0XB9,	# 224 - 231
+    0XBE, 0X62, 0X93, 0X14, 0XE9, 0XD0, 0X38, 0X9C,	# 232 - 239
+    0XB2, 0XC2, 0X59, 0X5D, 0XB6, 0X72, 0X51, 0XF8,	# 240 - 247
+    0X28, 0X7E, 0X61, 0X39, 0XE1, 0XDB, 0X69, 0X80,	# 248 - 255
+]
+
+SPECIAL_CODES = [
+    0x29, # two byte move follows
+    0xDC, # start of variation
+    0x0C  # end of variation
+]
+
+
+def decode(game_bytes, cb_position, piece_list, fen=None):
     position_stack = []
     processed_moves = 0
     game = chess.pgn.Game()
+    if fen is not None:
+        board = chess.Board(fen)
+        game.setup(board)
     node = game
-    for idx in range(0, len(game_bytes)):
+    idx = 0
+    while idx < len(game_bytes):
+        print("idx: "+str(idx))
         #print(game)
         tkn = (game_bytes[idx] - processed_moves) % 256
-        processed_moves += 1
-        processed_moves %= 256
+        print("tkn: " + str(hex(tkn)))
+        if tkn not in SPECIAL_CODES:
+            processed_moves += 1
+            processed_moves %= 256
         if node.board().turn == chess.WHITE:
             print("white to move")
-            # print("tkn: "+str(hex(tkn)))
+            print("tkn: "+str(hex(tkn)))
             if tkn == 0xAA:  # null move
                 node = node.add_variation(chess.Move.null())
                 processed_moves += 1
+            elif tkn == 0x29: # latch to two byte move
+                #
+                #move_2b = struct.unpack(">H", game_bytes[idx+1:idx+3])
+                #print(bin(move_2b[0]))
+                #src = move_2b[0] & 0x3F
+                #print("latch:")
+                #print(bin(game_bytes[idx]))
+                #print(bin(game_bytes[idx+1]))
+                #print(bin(game_bytes[idx+2]))
+                tmp = [None, None]
+                tmp[0] = DEOBFUSCATE_2B[game_bytes[idx+1] - processed_moves]
+                tmp[1] = DEOBFUSCATE_2B[game_bytes[idx+2] - processed_moves]
+                tmp_uint16 = struct.unpack(">H", bytes(tmp))
+                if len(tmp_uint16) < 1:
+                    raise ValueError("Error decoding 2b move: "+str(tmp_uint16))
+                move_2b = tmp_uint16[0]
+                src = move_2b & 0x3F
+                dst = (move_2b >> 6) & 0x3F
+                promotion_piece = (move_2b >> 12) & 0x3
+                x,y = LOOKUP_2B[src]
+                src_san = SQN[x][y]
+                x1,y1 = LOOKUP_2B[dst]
+                dst_san = SQN[x][y]
+                node = do_2b_move(piece_list, x, y, x1, y1, cb_position, node)
+                idx += 2
+                continue
+                #print("src: "+str(src))
+                #print("src_xy: "+str(src_san))
+                #print("src_san: "+src_san)
+                # a1=0, a2=1, h8=63
+                #dst =
+                #start
             elif tkn in CB_KING_ENC:
+                print("w king enc")
                 node = do_move(piece_list, W_KING, 0, cb_position, CB_KING_ENC, node, tkn)
             elif tkn in CB_QUEEN_1_ENC:
+                print("w queen enc 1")
                 node = do_move(piece_list, W_QUEEN, 0, cb_position, CB_QUEEN_1_ENC, node, tkn)
             elif tkn in CB_QUEEN_2_ENC:
+                print("w queen enc 2")
                 node = do_move(piece_list, W_QUEEN, 1, cb_position, CB_QUEEN_2_ENC, node, tkn)
             elif tkn in CB_QUEEN_3_ENC:
+                print("w queen enc 3")
                 node = do_move(piece_list, W_QUEEN, 2, cb_position, CB_QUEEN_3_ENC, node, tkn)
             elif tkn in CB_ROOK_1_ENC:
+                print("w rook enc")
                 node = do_move(piece_list, W_ROOK, 0, cb_position, CB_ROOK_1_ENC, node, tkn)
             elif tkn in CB_ROOK_2_ENC:
+                print("w rook enc")
                 node = do_move(piece_list, W_ROOK, 1, cb_position, CB_ROOK_2_ENC, node, tkn)
             elif tkn in CB_ROOK_3_ENC:
+                print("w rook enc")
                 node = do_move(piece_list, W_ROOK, 2, cb_position, CB_ROOK_3_ENC, node, tkn)
             elif tkn in CB_BISHOP_1_ENC:
+                print("w bishop enc")
                 node = do_move(piece_list, W_BISHOP, 0, cb_position, CB_BISHOP_1_ENC, node, tkn)
             elif tkn in CB_BISHOP_2_ENC:
+                print("w bishop enc")
                 node = do_move(piece_list, W_BISHOP, 1, cb_position, CB_BISHOP_2_ENC, node, tkn)
             elif tkn in CB_BISHOP_3_ENC:
+                print("w bishop enc")
                 node = do_move(piece_list, W_BISHOP, 2, cb_position, CB_BISHOP_3_ENC, node, tkn)
             elif tkn in CB_KNIGHT_1_ENC:
+                print("w bishop enc")
                 node = do_move(piece_list, W_KNIGHT, 0, cb_position, CB_KNIGHT_1_ENC, node, tkn)
             elif tkn in CB_KNIGHT_2_ENC:
+                print("w bishop enc")
                 node = do_move(piece_list, W_KNIGHT, 1, cb_position, CB_KNIGHT_2_ENC, node, tkn)
             elif tkn in CB_KNIGHT_3_ENC:
+                print("w bishop enc")
                 node = do_move(piece_list, W_KNIGHT, 2, cb_position, CB_KNIGHT_3_ENC, node, tkn)
             elif tkn in CB_PAWN_A_ENC:
+                print("w pawn enc")
                 node = do_move(piece_list, W_PAWN, 0, cb_position, CB_PAWN_A_ENC, node, tkn)
             elif tkn in CB_PAWN_B_ENC:
+                print("w pawn enc")
                 node = do_move(piece_list, W_PAWN, 1, cb_position, CB_PAWN_B_ENC, node, tkn)
             elif tkn in CB_PAWN_C_ENC:
+                print("w pawn enc")
                 node = do_move(piece_list, W_PAWN, 2, cb_position, CB_PAWN_C_ENC, node, tkn)
             elif tkn in CB_PAWN_D_ENC:
+                print("w pawn enc")
                 node = do_move(piece_list, W_PAWN, 3, cb_position, CB_PAWN_D_ENC, node, tkn)
             elif tkn in CB_PAWN_E_ENC:
                 # print("pawn move e")
+                print("w pawn enc")
                 node = do_move(piece_list, W_PAWN, 4, cb_position, CB_PAWN_E_ENC, node, tkn)
             elif tkn in CB_PAWN_F_ENC:
+                print("w pawn enc")
                 node = do_move(piece_list, W_PAWN, 5, cb_position, CB_PAWN_F_ENC, node, tkn)
             elif tkn in CB_PAWN_G_ENC:
+                print("w pawn enc")
                 node = do_move(piece_list, W_PAWN, 6, cb_position, CB_PAWN_G_ENC, node, tkn)
             elif tkn in CB_PAWN_H_ENC:
+                print("w pawn enc")
                 node = do_move(piece_list, W_PAWN, 7, cb_position, CB_PAWN_H_ENC, node, tkn)
         else:
             # print("black to move")
@@ -811,6 +964,7 @@ def decode(game_bytes, cb_position, piece_list):
                 node = do_move(piece_list, B_PAWN, 6, cb_position, CB_PAWN_G_ENC, node, tkn, pawn_flip=True)
             elif tkn in CB_PAWN_H_ENC:
                 node = do_move(piece_list, B_PAWN, 7, cb_position, CB_PAWN_H_ENC, node, tkn, pawn_flip=True)
+        idx += 1
     return game
 
 

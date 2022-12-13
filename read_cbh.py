@@ -33,7 +33,8 @@ def to_hex(ls):
 #DB_ROOT = "/home/user/MyFiles/workspace/test_databases/yymmdd"
 #DB_ROOT = "/home/user/MyFiles/workspace/test_databases/start_pos"
 #DB_ROOT = "/home/user/MyFiles/workspace/test_databases/f8_simple_game"
-DB_ROOT = "/home/user/MyFiles/workspace/test_databases/f8_simple_game_capture"
+#DB_ROOT = "/home/user/MyFiles/workspace/test_databases/f8_simple_game_capture"
+DB_ROOT = "/home/user/MyFiles/workspace/test_databases/f8_d1d2d3d4"
 #DB_ROOT = "/media/user/28CE7A31CE79F800/Users/Domin/Desktop/db_compare/f7_standard_custom"
 #DB_ROOT = "/media/user/28CE7A31CE79F800/Users/Domin/Desktop/db_compare/f13_960_init"
 
@@ -127,12 +128,20 @@ print("Not a Game: "+str(not_encoded == 1))
 print("Is 960: "+str(is_960 == 1))
 print("Game Length: "+str(game_len))
 
+cb_position = None
+fen = None
 # cbg header is 26, after that game starts
 if not_initial:
-    fen, position, cb_position, w_piece_lists, b_piece_lists = game.decode_position(cbg_file, game_offset+4)
+    fen, position, cb_position, piece_list = game.decode_position(cbg_file, game_offset+4)
     print(fen)
     print(position)
     print(cb_position)
+    print("cbg initial position:")
+    print([ hex(i) for i in cbg_file[game_offset + 4 :game_offset + 4 + 28]])
+    print("cbg game bytes:")
+    print([ hex(i) for i in cbg_file[game_offset + 4 + 24:game_offset + game_len]])
+    game = game.decode(cbg_file[game_offset+4 + 28:game_offset+game_len], cb_position, piece_list, fen=fen)
+    print(game)
 else:
     initial_position = [
         [ game.W_ROOK, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_ROOK ],
@@ -147,5 +156,5 @@ else:
     cb_position, piece_list = game.convert_pos_to_cb(initial_position)
     print("cbg game bytes:")
     print([ hex(i) for i in cbg_file[game_offset + 4:game_offset + game_len]])
-    game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, piece_list)
+    game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, piece_list, fen=fen)
     print(game)
