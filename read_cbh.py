@@ -57,7 +57,7 @@ if to_hex(header_id) == "00002c002e01":
 if to_hex(header_id) == "000024002e01":
     print("created by Fritz/CB Light")
 
-cbh_record = cbh_file[46*1:46*2]
+cbh_record = cbh_file[46*3:46*4]
 
 # get player names
 offset_white = header.get_whiteplayer_offset(cbh_record)

@@ -186,7 +186,7 @@ def convert_pos_to_cb(position):
                 cb_position[i][j] = (0, None)
     # make sure that all piece lists have 8 elements
     # will make replacing piece nr down later easier
-    for i in range(W_QUEEN, B_ROOK):
+    for i in range(W_QUEEN, B_ROOK+1):
         l = len(piece_list[i])
         for j in range(l, 8):
             piece_list[i].append(None)
@@ -636,6 +636,18 @@ LOOKUP_2B = [
 ]
 
 
+def decrease_piece_nr(piece_list, cb_position, target_piece_type, target_nr):
+    for nr in range(target_nr, 7):
+        piece_list[target_piece_type][nr] = piece_list[target_piece_type][nr + 1]
+    piece_list[target_piece_type][7] = None
+    # now update position
+    for x in range(0, 8):
+        for y in range(0, 8):
+            p, t = cb_position[x][y]
+            if p == target_piece_type:
+                cb_position[x][y] = (p, t - 1)
+
+
 # piece_list  : w_queens, w_rooks, ...
 # cb_position : game position
 # piece_type  : W_KING, W_QUEEN, B_KING, B_QUEEN...
@@ -660,21 +672,9 @@ def do_move(piece_list, piece_type, piece_nr, cb_position, cb_enc_arr, node, tkn
     # and manipulate position accordingly
     target_piece_type, target_nr = cb_position[i1][j1]
     print("target piece type: "+str(target_piece_type))
-
     if target_piece_type != 0 and target_piece_type != W_KING and target_piece_type != B_KING \
             and target_piece_type != W_PAWN and target_piece_type != B_PAWN:
-        if target_nr < 3: # in that case the next piece becomes the previous one
-            for nr in range(target_nr, 2):
-                piece_list[target_piece_type][nr] = piece_list[target_piece_type][nr+1]
-            piece_list[target_piece_type][2] = None
-            # now update position
-            for x in range(0,8):
-                for y in range(0,8):
-                    p, t = cb_position[x][y]
-                    if p == target_piece_type:
-                        if target_nr < t < 3:
-                            cb_position[x][y] = (p, t-1)
-
+        decrease_piece_nr(piece_list, cb_position, target_piece_type, target_nr)
     cb_position[i1][j1] = (piece_type, piece_nr)
     piece_list[piece_type][piece_nr] = (i1, j1)
     # if we have castles, move the rook, too
@@ -717,33 +717,67 @@ def do_move(piece_list, piece_type, piece_nr, cb_position, cb_enc_arr, node, tkn
     return node
 
 
-def do_2b_move(piece_list, i, j, i1, j1, cb_position, node):
+def do_2b_move(piece_list, i, j, i1, j1, cb_position, node, cb_promotion_code):
     piece_type, piece_nr = cb_position[i][j]
     cb_position[i][j] = (0, None)
     # check what's on target square
     # and manipulate position accordingly
     target_piece_type, target_nr = cb_position[i1][j1]
     print("target piece type: "+str(target_piece_type))
-
     if target_piece_type != 0 and target_piece_type != W_KING and target_piece_type != B_KING \
             and target_piece_type != W_PAWN and target_piece_type != B_PAWN:
-        if target_nr < 3: # in that case the next piece becomes the previous one
-            for nr in range(target_nr, 2):
-                piece_list[target_piece_type][nr] = piece_list[target_piece_type][nr+1]
-            piece_list[target_piece_type][2] = None
-            # now update position
-            for x in range(0,8):
-                for y in range(0,8):
-                    p, t = cb_position[x][y]
-                    if p == target_piece_type:
-                        if target_nr < t < 3:
-                            cb_position[x][y] = (p, t-1)
-
-    cb_position[i1][j1] = (piece_type, piece_nr)
-    piece_list[piece_type][piece_nr] = (i1, j1)
-    # 2b move should usually never be castles
-    m = chess.Move.from_uci(SQN[i][j] + SQN[i1][j1])
-    print(SQN[i][j] + SQN[i1][j1])
+        decrease_piece_nr(piece_list, cb_position, target_piece_type, target_nr)
+    promotion_str = ""
+    promoted_piece_type = 0
+    if piece_type != W_PAWN and piece_type != B_PAWN:
+        # we just assume that two byte encodings never happen for
+        # pawn moves, except it's a promotion (check if this is true?!)
+        cb_position[i1][j1] = (piece_type, piece_nr)
+        print("piece type: "+str(piece_type))
+        print("piece nr: " + str(piece_nr))
+        piece_list[piece_type][piece_nr] = (i1, j1)
+    else:
+        # 2b move should usually never be castles -> nothing to be done
+        # 2b moves are used for promotions
+        if piece_type == W_PAWN and j1 == 7:
+            if cb_promotion_code == 0:
+                promoted_piece_type = W_QUEEN
+                promotion_str += "q"
+            elif cb_promotion_code == 1:
+                promoted_piece_type = W_ROOK
+                promotion_str += "r"
+            elif cb_promotion_code == 2:
+                promoted_piece_type = W_BISHOP
+                promotion_str += "b"
+            elif cb_promotion_code == 3:
+                promoted_piece_type = W_KNIGHT
+                promotion_str += "n"
+            else:
+                raise ValueError("unknown promotion piece type")
+        if piece_type == B_PAWN and j1 == 0:
+            if cb_promotion_code == 0:
+                promoted_piece_type = B_QUEEN
+                promotion_str += "q"
+            elif cb_promotion_code == 1:
+                promoted_piece_type = B_ROOK
+                promotion_str += "r"
+            elif cb_promotion_code == 2:
+                promoted_piece_type = B_BISHOP
+                promotion_str += "b"
+            elif cb_promotion_code == 3:
+                promoted_piece_type = B_KNIGHT
+                promotion_str += "n"
+            else:
+                raise ValueError("unknown promotion piece type")
+    if promoted_piece_type != 0:
+        # find first free piece nr
+        for free_idx in range(0,8):
+            if piece_list[promoted_piece_type][free_idx] == (0, None):
+                break
+        piece_list[promoted_piece_type][free_idx] = (i1,j1)
+        cb_position[i1][j1] = (promoted_piece_type, free_idx)
+    m = chess.Move.from_uci(SQN[i][j] + SQN[i1][j1] + promotion_str)
+    print(SQN[i][j] + SQN[i1][j1] + promotion_str)
     node = node.add_variation(m)
     return node
 
@@ -792,7 +826,8 @@ DEOBFUSCATE_2B = [
 SPECIAL_CODES = [
     0x29, # two byte move follows
     0xDC, # start of variation
-    0x0C  # end of variation
+    0x0C, # end of variation
+    0x9F  # just skip and continue
 ]
 
 
@@ -813,45 +848,58 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
         if tkn not in SPECIAL_CODES:
             processed_moves += 1
             processed_moves %= 256
-        if node.board().turn == chess.WHITE:
+        if tkn == 0x9F:
+            idx+=1
+            continue
             print("white to move")
             print("tkn: "+str(hex(tkn)))
-            if tkn == 0xAA:  # null move
-                node = node.add_variation(chess.Move.null())
-                processed_moves += 1
-            elif tkn == 0x29: # latch to two byte move
-                #
-                #move_2b = struct.unpack(">H", game_bytes[idx+1:idx+3])
-                #print(bin(move_2b[0]))
-                #src = move_2b[0] & 0x3F
-                #print("latch:")
-                #print(bin(game_bytes[idx]))
-                #print(bin(game_bytes[idx+1]))
-                #print(bin(game_bytes[idx+2]))
-                tmp = [None, None]
-                tmp[0] = DEOBFUSCATE_2B[game_bytes[idx+1] - processed_moves]
-                tmp[1] = DEOBFUSCATE_2B[game_bytes[idx+2] - processed_moves]
-                tmp_uint16 = struct.unpack(">H", bytes(tmp))
-                if len(tmp_uint16) < 1:
-                    raise ValueError("Error decoding 2b move: "+str(tmp_uint16))
-                move_2b = tmp_uint16[0]
-                src = move_2b & 0x3F
-                dst = (move_2b >> 6) & 0x3F
-                promotion_piece = (move_2b >> 12) & 0x3
-                x,y = LOOKUP_2B[src]
-                src_san = SQN[x][y]
-                x1,y1 = LOOKUP_2B[dst]
-                dst_san = SQN[x][y]
-                node = do_2b_move(piece_list, x, y, x1, y1, cb_position, node)
-                idx += 2
-                continue
-                #print("src: "+str(src))
-                #print("src_xy: "+str(src_san))
-                #print("src_san: "+src_san)
-                # a1=0, a2=1, h8=63
-                #dst =
-                #start
-            elif tkn in CB_KING_ENC:
+        if tkn == 0xAA:  # null move
+            node = node.add_variation(chess.Move.null())
+            processed_moves += 1
+        if tkn == 0x29: # latch to two byte move
+            print("LATCH TO 2B")
+            #
+            #move_2b = struct.unpack(">H", game_bytes[idx+1:idx+3])
+            #print(bin(move_2b[0]))
+            #src = move_2b[0] & 0x3F
+            #print("latch:")
+            #print(bin(game_bytes[idx]))
+            #print(bin(game_bytes[idx+1]))
+            #print(bin(game_bytes[idx+2]))
+            tmp = [None, None]
+            print(hex(game_bytes[idx+1]))
+            print(hex(game_bytes[idx + 2]))
+            tmp[0] = DEOBFUSCATE_2B[game_bytes[idx+1] - processed_moves]
+            tmp[1] = DEOBFUSCATE_2B[game_bytes[idx+2] - processed_moves]
+            tmp_uint16 = struct.unpack(">H", bytes(tmp))
+            if len(tmp_uint16) < 1:
+                raise ValueError("Error decoding 2b move: "+str(tmp_uint16))
+            move_2b = tmp_uint16[0]
+            src = move_2b & 0x3F
+            dst = (move_2b >> 6) & 0x3F
+            promotion_piece = (move_2b >> 12) & 0x3
+            x,y = LOOKUP_2B[src]
+            src_san = SQN[x][y]
+            x1,y1 = LOOKUP_2B[dst]
+            dst_san = SQN[x][y]
+            print("promotion: "+str(promotion_piece))
+
+            node = do_2b_move(piece_list, x, y, x1, y1, cb_position, node, promotion_piece)
+            processed_moves += 1
+            processed_moves %= 256
+            idx += 3
+
+            #processed_moves += 1
+            #processed_moves %= 256
+            continue
+            #print("src: "+str(src))
+            #print("src_xy: "+str(src_san))
+            #print("src_san: "+src_san)
+            # a1=0, a2=1, h8=63
+            #dst =
+            #start
+        if node.board().turn == chess.WHITE:
+            if tkn in CB_KING_ENC:
                 print("w king enc")
                 node = do_move(piece_list, W_KING, 0, cb_position, CB_KING_ENC, node, tkn)
             elif tkn in CB_QUEEN_1_ENC:
@@ -917,11 +965,11 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
                 node = do_move(piece_list, W_PAWN, 7, cb_position, CB_PAWN_H_ENC, node, tkn)
         else:
             # print("black to move")
-            print("tkn: " + str(hex(tkn)))
-            if tkn == 0xAA:  # null move
-                node = node.add_variation(chess.Move.null())
-                processed_moves += 1
-            elif tkn in CB_KING_ENC:
+            #print("tkn: " + str(hex(tkn)))
+            #if tkn == 0xAA:  # null move
+            #    node = node.add_variation(chess.Move.null())
+            #    processed_moves += 1
+            if tkn in CB_KING_ENC:
                 node = do_move(piece_list, B_KING, 0, cb_position, CB_KING_ENC, node, tkn)
             elif tkn in CB_QUEEN_1_ENC:
                 node = do_move(piece_list, B_QUEEN, 0, cb_position, CB_QUEEN_1_ENC, node, tkn)
