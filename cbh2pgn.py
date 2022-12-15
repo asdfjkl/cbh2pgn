@@ -67,7 +67,8 @@ exporter = chess.pgn.FileExporter(pgn_out)
 
 nr_records = (len(cbh_file) // 46)
 
-for i in tqdm(range(1, nr_records)):
+#for i in tqdm(range(1, nr_records)):
+for i in tqdm(range(2, 8)):
     cbh_record = cbh_file[46*i:46*(i+1)]
 
     # get player names
@@ -156,7 +157,7 @@ for i in tqdm(range(1, nr_records)):
              [(4, 7)],                                               # black king
              [(0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1)], # white pawns
              [(0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6)]] # black pawns
-            pgn_game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, piece_list, fen=fen)
+            pgn_game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, piece_list)
     if pgn_game is not None:
         pgn_game.headers["White"] = white_player_name
         pgn_game.headers["Black"] = black_player_name
