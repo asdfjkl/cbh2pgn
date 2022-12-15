@@ -57,7 +57,7 @@ if to_hex(header_id) == "00002c002e01":
 if to_hex(header_id) == "000024002e01":
     print("created by Fritz/CB Light")
 
-cbh_record = cbh_file[46*4:46*5]
+cbh_record = cbh_file[46*1:46*2]
 
 # get player names
 offset_white = header.get_whiteplayer_offset(cbh_record)
@@ -122,7 +122,7 @@ if header.is_marked_as_deleted(cbh_record):
 else:
     print("game is NOT marked for deletion")
 
-not_initial, not_encoded, is_960, game_len = game.decode_start(cbg_file, game_offset)
+not_initial, not_encoded, is_960, game_len = game.get_info_gamelen(cbg_file, game_offset)
 print("Starting FEN: "+str(not_initial == 1))
 print("Not a Game: "+str(not_encoded == 1))
 print("Is 960: "+str(is_960 == 1))
@@ -132,29 +132,34 @@ cb_position = None
 fen = None
 # cbg header is 26, after that game starts
 if not_initial:
-    fen, position, cb_position, piece_list = game.decode_position(cbg_file, game_offset+4)
-    print(fen)
-    print(position)
-    print(cb_position)
-    print("cbg initial position:")
-    print([ hex(i) for i in cbg_file[game_offset + 4 :game_offset + 4 + 28]])
-    print("cbg game bytes:")
-    print([ hex(i) for i in cbg_file[game_offset + 4 + 24:game_offset + game_len+1]])
-    game = game.decode(cbg_file[game_offset+4 + 28:game_offset+game_len+1], cb_position, piece_list, fen=fen)
+    fen, cb_position, piece_list = game.decode_start_position(cbg_file, game_offset)
+    game = game.decode(cbg_file[game_offset+4 + 28:game_offset+game_len], cb_position, piece_list, fen=fen)
     print(game)
 else:
-    initial_position = [
-        [ game.W_ROOK, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_ROOK ],
-        [ game.W_KNIGHT, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_KNIGHT ],
-        [ game.W_BISHOP, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_BISHOP ],
-        [ game.W_QUEEN, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_QUEEN ],
-        [ game.W_KING, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_KING ],
-        [ game.W_BISHOP, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_BISHOP ],
-        [ game.W_KNIGHT, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_KNIGHT ],
-        [ game.W_ROOK, game.W_PAWN, 0, 0, 0, 0, game.B_PAWN, game.B_ROOK ]
+    # number denotes the 0th, the 1st, 2nd ... piece of one kind (e.g. 0th white rook in upper left corner
+    # 1th white rook in lower left corner
+    cb_position = [
+     [(game.W_ROOK, 0), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_ROOK, 0)],
+     [(game.W_KNIGHT, 0), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_KNIGHT, 0)],
+     [(game.W_BISHOP, 0), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_BISHOP, 0)],
+     [(game.W_QUEEN, 0), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_QUEEN, 0)],
+     [(game.W_KING, None), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_KING, None)],
+     [(game.W_BISHOP, 1), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_BISHOP, 1)],
+     [(game.W_KNIGHT, 1), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_KNIGHT, 1)],
+     [(game.W_ROOK, 1), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_ROOK, 1)]
     ]
-    cb_position, piece_list = game.convert_pos_to_cb(initial_position)
-    print("cbg game bytes:")
-    print([ hex(i) for i in cbg_file[game_offset + 4:game_offset + game_len]])
-    game = game.decode(cbg_file[game_offset+4:game_offset+game_len+1], cb_position, piece_list, fen=fen)
+    piece_list = [None,
+     [(3, 0), None, None, None, None, None, None, None],     # white queen on (3,0)
+     [(1, 0), (6, 0), None, None, None, None, None, None],   # first white knight on (1,0), second one on (6,0)
+     [(2, 0), (5, 0), None, None, None, None, None, None],   # white bishops
+     [(0, 0), (7, 0), None, None, None, None, None, None],   # white rooks
+     [(3, 7), None, None, None, None, None, None, None],     # black queens
+     [(1, 7), (6, 7), None, None, None, None, None, None],   # black knights
+     [(2, 7), (5, 7), None, None, None, None, None, None],   # black bishops
+     [(0, 7), (7, 7), None, None, None, None, None, None],   # black rooks
+     [(4, 0)],                                               # white king
+     [(4, 7)],                                               # black king
+     [(0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1)], # white pawns
+     [(0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6)]] # black pawns
+    game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, piece_list, fen=fen)
     print(game)
