@@ -57,7 +57,7 @@ if to_hex(header_id) == "00002c002e01":
 if to_hex(header_id) == "000024002e01":
     print("created by Fritz/CB Light")
 
-cbh_record = cbh_file[46*3:46*4]
+cbh_record = cbh_file[46*4:46*5]
 
 # get player names
 offset_white = header.get_whiteplayer_offset(cbh_record)
@@ -139,8 +139,8 @@ if not_initial:
     print("cbg initial position:")
     print([ hex(i) for i in cbg_file[game_offset + 4 :game_offset + 4 + 28]])
     print("cbg game bytes:")
-    print([ hex(i) for i in cbg_file[game_offset + 4 + 24:game_offset + game_len]])
-    game = game.decode(cbg_file[game_offset+4 + 28:game_offset+game_len], cb_position, piece_list, fen=fen)
+    print([ hex(i) for i in cbg_file[game_offset + 4 + 24:game_offset + game_len+1]])
+    game = game.decode(cbg_file[game_offset+4 + 28:game_offset+game_len+1], cb_position, piece_list, fen=fen)
     print(game)
 else:
     initial_position = [
@@ -156,5 +156,5 @@ else:
     cb_position, piece_list = game.convert_pos_to_cb(initial_position)
     print("cbg game bytes:")
     print([ hex(i) for i in cbg_file[game_offset + 4:game_offset + game_len]])
-    game = game.decode(cbg_file[game_offset+4:game_offset+game_len], cb_position, piece_list, fen=fen)
+    game = game.decode(cbg_file[game_offset+4:game_offset+game_len+1], cb_position, piece_list, fen=fen)
     print(game)

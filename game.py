@@ -1,3 +1,4 @@
+import copy
 import struct
 
 # import chess
@@ -832,7 +833,7 @@ SPECIAL_CODES = [
 
 
 def decode(game_bytes, cb_position, piece_list, fen=None):
-    position_stack = []
+    stack = []
     processed_moves = 0
     game = chess.pgn.Game()
     if fen is not None:
@@ -898,6 +899,12 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
             # a1=0, a2=1, h8=63
             #dst =
             #start
+        if tkn == 0xDC: # start of variation, push to stack
+            stack.append((node, copy.deepcopy(cb_position), copy.deepcopy(piece_list)))
+        if tkn == 0x0C: # end of variation, pop from stack and continue
+            # every game is terminated with 0x0C -> ignore last
+            if idx < (len(game_bytes) - 1):
+                node, cb_position, piece_list = stack.pop()
         if node.board().turn == chess.WHITE:
             if tkn in CB_KING_ENC:
                 print("w king enc")
