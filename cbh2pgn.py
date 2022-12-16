@@ -68,7 +68,7 @@ exporter = chess.pgn.FileExporter(pgn_out)
 nr_records = (len(cbh_file) // 46)
 
 #for i in tqdm(range(1, nr_records)):
-for i in tqdm(range(2, 8)):
+for i in tqdm(range(1, nr_records)):
     cbh_record = cbh_file[46*i:46*(i+1)]
 
     # get player names
@@ -101,7 +101,7 @@ for i in tqdm(range(2, 8)):
 
     # get tournament info
     tournament_offset = header.get_tournament_offset(cbh_record)
-    place, site = tournament.get_event_site_totalrounds(cbt_file, tournament_offset)
+    event, site = tournament.get_event_site_totalrounds(cbt_file, tournament_offset)
 
     # get round + subround
     round,subround = header.get_round_subround(cbh_record)
@@ -135,14 +135,14 @@ for i in tqdm(range(2, 8)):
             # number denotes the 0th, the 1st, 2nd ... piece of one kind (e.g. 0th white rook in upper left corner
             # 1st white rook in lower left corner
             cb_position = [
-             [(game.W_ROOK, 0), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_ROOK, 0)],
-             [(game.W_KNIGHT, 0), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_KNIGHT, 0)],
-             [(game.W_BISHOP, 0), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_BISHOP, 0)],
-             [(game.W_QUEEN, 0), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_QUEEN, 0)],
-             [(game.W_KING, None), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_KING, None)],
-             [(game.W_BISHOP, 1), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_BISHOP, 1)],
-             [(game.W_KNIGHT, 1), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_KNIGHT, 1)],
-             [(game.W_ROOK, 1), (game.W_PAWN, None), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, None), (game.B_ROOK, 1)]
+             [(game.W_ROOK, 0), (game.W_PAWN, 0), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, 0), (game.B_ROOK, 0)],
+             [(game.W_KNIGHT, 0), (game.W_PAWN, 1), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, 1), (game.B_KNIGHT, 0)],
+             [(game.W_BISHOP, 0), (game.W_PAWN, 2), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, 2), (game.B_BISHOP, 0)],
+             [(game.W_QUEEN, 0), (game.W_PAWN, 3), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, 3), (game.B_QUEEN, 0)],
+             [(game.W_KING, None), (game.W_PAWN, 4), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, 4), (game.B_KING, None)],
+             [(game.W_BISHOP, 1), (game.W_PAWN, 5), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, 5), (game.B_BISHOP, 1)],
+             [(game.W_KNIGHT, 1), (game.W_PAWN, 6), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, 6), (game.B_KNIGHT, 1)],
+             [(game.W_ROOK, 1), (game.W_PAWN, 7), (0, None), (0, None), (0, None), (0, None), (game.B_PAWN, 7), (game.B_ROOK, 1)]
             ]
             piece_list = [None,
              [(3, 0), None, None, None, None, None, None, None],     # white queen on (3,0)
@@ -163,7 +163,7 @@ for i in tqdm(range(2, 8)):
         pgn_game.headers["Black"] = black_player_name
         pgn_game.headers["Date"] = pgn_yymmdd
         pgn_game.headers["Result"] = pgn_res
-        pgn_game.headers["Place"] = place
+        pgn_game.headers["Event"] = event
         pgn_game.headers["Site"] = site
         if subround != 0:
             pgn_game.headers["Round"] = str(round)+"("+str(subround)+")"
