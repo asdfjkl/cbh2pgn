@@ -1,9 +1,8 @@
+# decode obfuscated game data
 import copy
 import struct
 import chess.pgn
-import numpy as np
 
-#
 MASK_START_WITH_INITIAL = 0x40000000
 MASK_IS_ENCODED = 0x80000000
 MASK_GAME_LEN = 0x00FFFFFF
@@ -280,9 +279,9 @@ def cb_pos_to_fen(cb_position, ep_file, is_blacks_turn, w_long, w_short, b_long,
         else:
             raise ValueError("unknown ep file encoding: "+str(ep_file))
         if is_blacks_turn:
-            fen += "3"
+            fen += "3 "
         else:
-            fen += "6"
+            fen += "6 "
     else:
         fen += " - "
     fen += "0 "
@@ -905,10 +904,11 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
     node = game
     idx = 0
     while idx < len(game_bytes):
-        #print(game)
-        #print_cb_position(cb_position)
         tkn = (game_bytes[idx] - processed_moves) % 256
         #print("token: "+str(hex(tkn)))
+        #print(game)
+        #print_cb_position(cb_position)
+        #print("")
         if tkn not in SPECIAL_CODES:
             # only inc move counter if
             # it is not a special code
@@ -918,9 +918,10 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
             # 0x9F is just a byte skip (filler byte?!)
             idx += 1
             continue
-        if tkn == 0xAA:  # null move
+        if tkn == 0xAA:  # null move, don't increase processed move counter
             node = node.add_variation(chess.Move.null())
-            processed_moves += 1
+            idx += 1
+            continue
         if tkn == 0x29: # latch to two byte move
             tmp = [None, None]
             tmp[0] = DEOBFUSCATE_2B[game_bytes[idx+1] - processed_moves]

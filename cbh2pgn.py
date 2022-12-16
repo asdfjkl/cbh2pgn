@@ -1,4 +1,4 @@
-import numpy as np
+import mmap
 from binascii import hexlify
 import game
 import header
@@ -48,10 +48,15 @@ CBP = DB_ROOT + ".cbp" # players
 CBT = DB_ROOT + ".cbt" # tournaments
 CBE = DB_ROOT + ".cbe" # teams
 
-cbh_file = np.memmap(CBH, dtype=np.uint8)
-cbp_file = np.memmap(CBP, dtype=np.uint8)
-cbt_file = np.memmap(CBT, dtype=np.uint8)
-cbg_file = np.memmap(CBG, dtype=np.uint8)
+f_cbh = open(CBH, "rb")
+f_cbp = open(CBP, "rb")
+f_cbt = open(CBT, "rb")
+f_cbg = open(CBG, "rb")
+
+cbh_file = mmap.mmap(f_cbh.fileno(), 0, prot=mmap.PROT_READ)
+cbp_file = mmap.mmap(f_cbp.fileno(), 0, prot=mmap.PROT_READ)
+cbt_file = mmap.mmap(f_cbt.fileno(), 0, prot=mmap.PROT_READ)
+cbg_file = mmap.mmap(f_cbg.fileno(), 0, prot=mmap.PROT_READ)
 
 header_bytes = cbh_file[0:46]
 header_id = header_bytes[0:6]
@@ -174,4 +179,8 @@ for i in tqdm(range(1, nr_records)):
         if b_elo != 0:
             pgn_game.headers["BlackElo"] = str(b_elo)
         pgn_game.accept(exporter)
-    
+
+f_cbh.close()
+f_cbp.close()
+f_cbt.close()
+f_cbg.close()

@@ -1,5 +1,5 @@
+# decode header data file
 import struct
-import numpy as np
 
 MASK_IS_GAME = int('00000001', 2)
 MASK_MARKED_FOR_DELETION = int('10000000', 2)
@@ -20,7 +20,6 @@ def get_round_subround(cbh_record):
 
 def get_result(cbh_record):
     res_code = cbh_record[27]
-    #print("res code "+str(res_code))
     if res_code == 2:
         return "1-0"
     if res_code == 1:
@@ -31,11 +30,9 @@ def get_result(cbh_record):
 
 
 def get_yymmdd(cbh_record):
-    yymmdd = np.zeros(4, dtype=np.uint8)
+    yymmdd = [ 0 for x in range(0,4) ]
     yymmdd[1:4] = cbh_record[24:27]
-    yymmdd_uint32 = struct.unpack(">I", yymmdd)[0]
-    #print(bin(yymmdd_uint32))
-
+    yymmdd_uint32 = struct.unpack(">I", bytearray(yymmdd))[0]
     year = (yymmdd_uint32 & MASK_YEAR) >> 9
     month = (yymmdd_uint32 & MASK_MONTH) >> 5
     day = yymmdd_uint32 & MASK_DAY
@@ -43,9 +40,9 @@ def get_yymmdd(cbh_record):
 
 
 def get_whiteplayer_offset(cbh_record):
-    player_no_white = np.zeros(4, dtype=np.uint8)
+    player_no_white = [0 for x in range(0, 4)]
     player_no_white[1:4] = cbh_record[9:12]
-    white_player_int = struct.unpack(">I", player_no_white)
+    white_player_int = struct.unpack(">I", bytearray(player_no_white))
     if len(white_player_int) > 0:
         return white_player_int[0]
     else:
@@ -53,9 +50,9 @@ def get_whiteplayer_offset(cbh_record):
 
 
 def get_blackplayer_offset(cbh_record):
-    player_no_black = np.zeros(4, dtype=np.uint8)
+    player_no_black = [0 for x in range(0, 4)]
     player_no_black[1:4] = cbh_record[12:15]
-    black_player_int = struct.unpack(">I", player_no_black)
+    black_player_int = struct.unpack(">I", bytearray(player_no_black))
     if len(black_player_int) > 0:
         return black_player_int[0]
     else:
@@ -63,9 +60,9 @@ def get_blackplayer_offset(cbh_record):
 
 
 def get_tournament_offset(cbh_record):
-    tournament_no = np.zeros(4, dtype=np.uint8)
+    tournament_no = [0 for x in range(0, 4)]
     tournament_no[1:4] = cbh_record[15:18]
-    tournament_int = struct.unpack(">I", tournament_no)
+    tournament_int = struct.unpack(">I", bytearray(tournament_no))
     if len(tournament_int) > 0:
         return tournament_int[0]
     else:
@@ -73,7 +70,7 @@ def get_tournament_offset(cbh_record):
 
 
 def get_game_offset(cbh_record):
-    game_offset_int = struct.unpack(">I", cbh_record[1:5])
+    game_offset_int = struct.unpack(">I", bytearray(cbh_record[1:5]))
     if len(game_offset_int) > 0:
         return game_offset_int[0]
     else:
