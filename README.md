@@ -32,7 +32,7 @@ For comparison (reading and writing from/to SSD):
 Install `python3`, `pypy`, `pip`, and `python-chess`
 
 - `sudo apt install pypy3`
-- `pypy3 -m ensurepip`
+- `sudo apt install python3-pip`
 - `pypy -mpip install -U pip wheel`
 - `pypy -mpip install python-chess`
 
