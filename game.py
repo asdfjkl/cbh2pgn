@@ -2,9 +2,17 @@
 import copy
 import struct
 import chess.pgn
+import traceback
 
 MASK_START_WITH_INITIAL = 0x40000000
 MASK_IS_ENCODED = 0x80000000
+
+# some games have this bit set, e.g.
+# Giffard, Nicolas vs Martsynovskaya, Marina
+# only few games in mega have this flag
+# game is then obfuscated in a different way, how to decode?
+MASK_SPECIAL_ENCODING = 0x4000000
+
 MASK_GAME_LEN = 0x00FFFFFF
 MASK_IS_960 = 0x00A000000
 
@@ -20,15 +28,22 @@ def get_info_gamelen(cbg_file, offset):
                           - length of the game
     """
     size_info = struct.unpack(">I", cbg_file[offset:offset + 4])
+    #print([hex(x) for x in cbg_file[offset:offset + 4]])
+    #print(bin(size_info[0]))
+    game_setup_byte = 0 # for debugging
     if len(size_info) > 0:
+        game_setup_byte = size_info[0]
         not_initial = (size_info[0] & MASK_START_WITH_INITIAL) >> 30
         not_encoded = (size_info[0] & MASK_IS_ENCODED) >> 31
+        special_encoding = (size_info[0] & MASK_SPECIAL_ENCODING) >> 26
+        #print("special_encoding")
+        #print(special_encoding)
         if (size_info[0] & MASK_IS_960) > 0:
             is_960 = 1
         else:
             is_960 = 0
         game_len = (size_info[0] & MASK_GAME_LEN)
-        return not_initial, not_encoded, is_960, game_len
+        return not_initial, not_encoded, is_960, special_encoding, game_setup_byte, game_len
     else:
         raise ValueError("get_info_gamelen: unable to extract size info from game file")
 
@@ -855,7 +870,7 @@ def print_cb_position(cb_pos):
         s = ""
         for j in (range(0,8)):
             t, c = cb_pos[j][i]
-            if c == None:
+            if c is None:
                 c = "_"
             if t == W_QUEEN:
                 s += " (q," + str(c) + ")"
@@ -895,6 +910,11 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
     :param fen: FEN string of the starting position. If not supplied we assume the starting position
     :return: python chess game (tree)
     """
+    #print([hex(x) for x in game_bytes])
+    #z = 0
+    #for k in range(0,10):
+    #    print(hex(game_bytes[k]-z))
+    #    z+=1
     stack = []
     processed_moves = 0
     game = chess.pgn.Game()
@@ -903,137 +923,149 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
         game.setup(board)
     node = game
     idx = 0
-    while idx < len(game_bytes):
-        tkn = (game_bytes[idx] - processed_moves) % 256
-        #print("token: "+str(hex(tkn)))
-        #print(game)
-        #print_cb_position(cb_position)
-        #print("")
-        if tkn not in SPECIAL_CODES:
-            # only inc move counter if
-            # it is not a special code
-            processed_moves += 1
-            processed_moves %= 256
-        if tkn == 0x9F:
-            # 0x9F is just a byte skip (filler byte?!)
+    err_string = None
+    try:
+        while idx < len(game_bytes):
+            tkn = (game_bytes[idx] - processed_moves) % 256
+            #print("token: "+str(hex(tkn)))
+            #print("peek: ")
+            #print(game_bytes[idx:])
+            #print(game_bytes[idx+1:])
+            #print((game_bytes[idx+1]-processed_moves) % 256)
+            #print((game_bytes[idx + 2] - processed_moves) % 256)
+            #print(game)
+            #print_cb_position(cb_position)
+            #print("")
+            if tkn not in SPECIAL_CODES:
+                # only inc move counter if
+                # it is not a special code
+                processed_moves += 1
+                processed_moves %= 256
+            if tkn == 0x9F:
+                # 0x9F is just a byte skip (filler byte?!)
+                idx += 1
+                continue
+            if tkn == 0xAA:  # null move, don't increase processed move counter
+                node = node.add_variation(chess.Move.null())
+                idx += 1
+                continue
+            if tkn == 0x29: # latch to two byte move
+                tmp = [None, None]
+                tmp[0] = DEOBFUSCATE_2B[game_bytes[idx+1] - processed_moves]
+                tmp[1] = DEOBFUSCATE_2B[game_bytes[idx+2] - processed_moves]
+                tmp_uint16 = struct.unpack(">H", bytes(tmp))
+                if len(tmp_uint16) < 1:
+                    raise ValueError("Error decoding 2b move: "+str(tmp_uint16))
+                move_2b = tmp_uint16[0]
+                src = move_2b & 0x3F
+                dst = (move_2b >> 6) & 0x3F
+                promotion_piece = (move_2b >> 12) & 0x3
+                x,y = ABS_TO_XY[src]
+                x1,y1 = ABS_TO_XY[dst]
+                #print(SQN[x][y])
+                node = do_2b_move(piece_list, x, y, x1, y1, cb_position, node, promotion_piece)
+                processed_moves += 1
+                processed_moves %= 256
+                # skip next two bytes (they stored the 2b move, and
+                # we have decoded them)
+                idx += 3
+                continue
+            if tkn == 0xDC: # start of variation, push to stack
+                stack.append((node, copy.deepcopy(cb_position), copy.deepcopy(piece_list)))
+            if tkn == 0x0C: # end of variation, pop from stack and continue
+                # every game is terminated with 0x0C -> ignore last
+                # otherwise pop from stack
+                if idx < (len(game_bytes) - 1):
+                    node, cb_position, piece_list = stack.pop()
+            if node.board().turn == chess.WHITE:
+                if tkn in CB_KING_ENC:
+                    node = do_move(piece_list, W_KING, 0, cb_position, CB_KING_ENC, node, tkn)
+                elif tkn in CB_QUEEN_1_ENC:
+                    node = do_move(piece_list, W_QUEEN, 0, cb_position, CB_QUEEN_1_ENC, node, tkn)
+                elif tkn in CB_QUEEN_2_ENC:
+                    node = do_move(piece_list, W_QUEEN, 1, cb_position, CB_QUEEN_2_ENC, node, tkn)
+                elif tkn in CB_QUEEN_3_ENC:
+                    node = do_move(piece_list, W_QUEEN, 2, cb_position, CB_QUEEN_3_ENC, node, tkn)
+                elif tkn in CB_ROOK_1_ENC:
+                    node = do_move(piece_list, W_ROOK, 0, cb_position, CB_ROOK_1_ENC, node, tkn)
+                elif tkn in CB_ROOK_2_ENC:
+                    node = do_move(piece_list, W_ROOK, 1, cb_position, CB_ROOK_2_ENC, node, tkn)
+                elif tkn in CB_ROOK_3_ENC:
+                    node = do_move(piece_list, W_ROOK, 2, cb_position, CB_ROOK_3_ENC, node, tkn)
+                elif tkn in CB_BISHOP_1_ENC:
+                    node = do_move(piece_list, W_BISHOP, 0, cb_position, CB_BISHOP_1_ENC, node, tkn)
+                elif tkn in CB_BISHOP_2_ENC:
+                    node = do_move(piece_list, W_BISHOP, 1, cb_position, CB_BISHOP_2_ENC, node, tkn)
+                elif tkn in CB_BISHOP_3_ENC:
+                    node = do_move(piece_list, W_BISHOP, 2, cb_position, CB_BISHOP_3_ENC, node, tkn)
+                elif tkn in CB_KNIGHT_1_ENC:
+                    node = do_move(piece_list, W_KNIGHT, 0, cb_position, CB_KNIGHT_1_ENC, node, tkn)
+                elif tkn in CB_KNIGHT_2_ENC:
+                    node = do_move(piece_list, W_KNIGHT, 1, cb_position, CB_KNIGHT_2_ENC, node, tkn)
+                elif tkn in CB_KNIGHT_3_ENC:
+                    node = do_move(piece_list, W_KNIGHT, 2, cb_position, CB_KNIGHT_3_ENC, node, tkn)
+                elif tkn in CB_PAWN_A_ENC:
+                    node = do_move(piece_list, W_PAWN, 0, cb_position, CB_PAWN_A_ENC, node, tkn)
+                elif tkn in CB_PAWN_B_ENC:
+                    node = do_move(piece_list, W_PAWN, 1, cb_position, CB_PAWN_B_ENC, node, tkn)
+                elif tkn in CB_PAWN_C_ENC:
+                    node = do_move(piece_list, W_PAWN, 2, cb_position, CB_PAWN_C_ENC, node, tkn)
+                elif tkn in CB_PAWN_D_ENC:
+                    node = do_move(piece_list, W_PAWN, 3, cb_position, CB_PAWN_D_ENC, node, tkn)
+                elif tkn in CB_PAWN_E_ENC:
+                    node = do_move(piece_list, W_PAWN, 4, cb_position, CB_PAWN_E_ENC, node, tkn)
+                elif tkn in CB_PAWN_F_ENC:
+                    node = do_move(piece_list, W_PAWN, 5, cb_position, CB_PAWN_F_ENC, node, tkn)
+                elif tkn in CB_PAWN_G_ENC:
+                    node = do_move(piece_list, W_PAWN, 6, cb_position, CB_PAWN_G_ENC, node, tkn)
+                elif tkn in CB_PAWN_H_ENC:
+                    node = do_move(piece_list, W_PAWN, 7, cb_position, CB_PAWN_H_ENC, node, tkn)
+            else:
+                if tkn in CB_KING_ENC:
+                    node = do_move(piece_list, B_KING, 0, cb_position, CB_KING_ENC, node, tkn)
+                elif tkn in CB_QUEEN_1_ENC:
+                    node = do_move(piece_list, B_QUEEN, 0, cb_position, CB_QUEEN_1_ENC, node, tkn)
+                elif tkn in CB_QUEEN_2_ENC:
+                    node = do_move(piece_list, B_QUEEN, 1, cb_position, CB_QUEEN_2_ENC, node, tkn)
+                elif tkn in CB_QUEEN_3_ENC:
+                    node = do_move(piece_list, B_QUEEN, 2, cb_position, CB_QUEEN_3_ENC, node, tkn)
+                elif tkn in CB_ROOK_1_ENC:
+                    node = do_move(piece_list, B_ROOK, 0, cb_position, CB_ROOK_1_ENC, node, tkn)
+                elif tkn in CB_ROOK_2_ENC:
+                    node = do_move(piece_list, B_ROOK, 1, cb_position, CB_ROOK_2_ENC, node, tkn)
+                elif tkn in CB_ROOK_3_ENC:
+                    node = do_move(piece_list, B_ROOK, 2, cb_position, CB_ROOK_3_ENC, node, tkn)
+                elif tkn in CB_BISHOP_1_ENC:
+                    node = do_move(piece_list, B_BISHOP, 0, cb_position, CB_BISHOP_1_ENC, node, tkn)
+                elif tkn in CB_BISHOP_2_ENC:
+                    node = do_move(piece_list, B_BISHOP, 1, cb_position, CB_BISHOP_2_ENC, node, tkn)
+                elif tkn in CB_BISHOP_3_ENC:
+                    node = do_move(piece_list, B_BISHOP, 2, cb_position, CB_BISHOP_3_ENC, node, tkn)
+                elif tkn in CB_KNIGHT_1_ENC:
+                    node = do_move(piece_list, B_KNIGHT, 0, cb_position, CB_KNIGHT_1_ENC, node, tkn)
+                elif tkn in CB_KNIGHT_2_ENC:
+                    node = do_move(piece_list, B_KNIGHT, 1, cb_position, CB_KNIGHT_2_ENC, node, tkn)
+                elif tkn in CB_KNIGHT_3_ENC:
+                    node = do_move(piece_list, B_KNIGHT, 2, cb_position, CB_KNIGHT_3_ENC, node, tkn)
+                elif tkn in CB_PAWN_A_ENC:
+                    node = do_move(piece_list, B_PAWN, 0, cb_position, CB_PAWN_A_ENC, node, tkn, pawn_flip=True)
+                elif tkn in CB_PAWN_B_ENC:
+                    node = do_move(piece_list, B_PAWN, 1, cb_position, CB_PAWN_B_ENC, node, tkn, pawn_flip=True)
+                elif tkn in CB_PAWN_C_ENC:
+                    node = do_move(piece_list, B_PAWN, 2, cb_position, CB_PAWN_C_ENC, node, tkn, pawn_flip=True)
+                elif tkn in CB_PAWN_D_ENC:
+                    node = do_move(piece_list, B_PAWN, 3, cb_position, CB_PAWN_D_ENC, node, tkn, pawn_flip=True)
+                elif tkn in CB_PAWN_E_ENC:
+                    node = do_move(piece_list, B_PAWN, 4, cb_position, CB_PAWN_E_ENC, node, tkn, pawn_flip=True)
+                elif tkn in CB_PAWN_F_ENC:
+                    node = do_move(piece_list, B_PAWN, 5, cb_position, CB_PAWN_F_ENC, node, tkn, pawn_flip=True)
+                elif tkn in CB_PAWN_G_ENC:
+                    node = do_move(piece_list, B_PAWN, 6, cb_position, CB_PAWN_G_ENC, node, tkn, pawn_flip=True)
+                elif tkn in CB_PAWN_H_ENC:
+                    node = do_move(piece_list, B_PAWN, 7, cb_position, CB_PAWN_H_ENC, node, tkn, pawn_flip=True)
             idx += 1
-            continue
-        if tkn == 0xAA:  # null move, don't increase processed move counter
-            node = node.add_variation(chess.Move.null())
-            idx += 1
-            continue
-        if tkn == 0x29: # latch to two byte move
-            tmp = [None, None]
-            tmp[0] = DEOBFUSCATE_2B[game_bytes[idx+1] - processed_moves]
-            tmp[1] = DEOBFUSCATE_2B[game_bytes[idx+2] - processed_moves]
-            tmp_uint16 = struct.unpack(">H", bytes(tmp))
-            if len(tmp_uint16) < 1:
-                raise ValueError("Error decoding 2b move: "+str(tmp_uint16))
-            move_2b = tmp_uint16[0]
-            src = move_2b & 0x3F
-            dst = (move_2b >> 6) & 0x3F
-            promotion_piece = (move_2b >> 12) & 0x3
-            x,y = ABS_TO_XY[src]
-            x1,y1 = ABS_TO_XY[dst]
-            node = do_2b_move(piece_list, x, y, x1, y1, cb_position, node, promotion_piece)
-            processed_moves += 1
-            processed_moves %= 256
-            # skip next two bytes (they stored the 2b move, and
-            # we have decoded them)
-            idx += 3
-            continue
-        if tkn == 0xDC: # start of variation, push to stack
-            stack.append((node, copy.deepcopy(cb_position), copy.deepcopy(piece_list)))
-        if tkn == 0x0C: # end of variation, pop from stack and continue
-            # every game is terminated with 0x0C -> ignore last
-            # otherwise pop from stack
-            if idx < (len(game_bytes) - 1):
-                node, cb_position, piece_list = stack.pop()
-        if node.board().turn == chess.WHITE:
-            if tkn in CB_KING_ENC:
-                node = do_move(piece_list, W_KING, 0, cb_position, CB_KING_ENC, node, tkn)
-            elif tkn in CB_QUEEN_1_ENC:
-                node = do_move(piece_list, W_QUEEN, 0, cb_position, CB_QUEEN_1_ENC, node, tkn)
-            elif tkn in CB_QUEEN_2_ENC:
-                node = do_move(piece_list, W_QUEEN, 1, cb_position, CB_QUEEN_2_ENC, node, tkn)
-            elif tkn in CB_QUEEN_3_ENC:
-                node = do_move(piece_list, W_QUEEN, 2, cb_position, CB_QUEEN_3_ENC, node, tkn)
-            elif tkn in CB_ROOK_1_ENC:
-                node = do_move(piece_list, W_ROOK, 0, cb_position, CB_ROOK_1_ENC, node, tkn)
-            elif tkn in CB_ROOK_2_ENC:
-                node = do_move(piece_list, W_ROOK, 1, cb_position, CB_ROOK_2_ENC, node, tkn)
-            elif tkn in CB_ROOK_3_ENC:
-                node = do_move(piece_list, W_ROOK, 2, cb_position, CB_ROOK_3_ENC, node, tkn)
-            elif tkn in CB_BISHOP_1_ENC:
-                node = do_move(piece_list, W_BISHOP, 0, cb_position, CB_BISHOP_1_ENC, node, tkn)
-            elif tkn in CB_BISHOP_2_ENC:
-                node = do_move(piece_list, W_BISHOP, 1, cb_position, CB_BISHOP_2_ENC, node, tkn)
-            elif tkn in CB_BISHOP_3_ENC:
-                node = do_move(piece_list, W_BISHOP, 2, cb_position, CB_BISHOP_3_ENC, node, tkn)
-            elif tkn in CB_KNIGHT_1_ENC:
-                node = do_move(piece_list, W_KNIGHT, 0, cb_position, CB_KNIGHT_1_ENC, node, tkn)
-            elif tkn in CB_KNIGHT_2_ENC:
-                node = do_move(piece_list, W_KNIGHT, 1, cb_position, CB_KNIGHT_2_ENC, node, tkn)
-            elif tkn in CB_KNIGHT_3_ENC:
-                node = do_move(piece_list, W_KNIGHT, 2, cb_position, CB_KNIGHT_3_ENC, node, tkn)
-            elif tkn in CB_PAWN_A_ENC:
-                node = do_move(piece_list, W_PAWN, 0, cb_position, CB_PAWN_A_ENC, node, tkn)
-            elif tkn in CB_PAWN_B_ENC:
-                node = do_move(piece_list, W_PAWN, 1, cb_position, CB_PAWN_B_ENC, node, tkn)
-            elif tkn in CB_PAWN_C_ENC:
-                node = do_move(piece_list, W_PAWN, 2, cb_position, CB_PAWN_C_ENC, node, tkn)
-            elif tkn in CB_PAWN_D_ENC:
-                node = do_move(piece_list, W_PAWN, 3, cb_position, CB_PAWN_D_ENC, node, tkn)
-            elif tkn in CB_PAWN_E_ENC:
-                node = do_move(piece_list, W_PAWN, 4, cb_position, CB_PAWN_E_ENC, node, tkn)
-            elif tkn in CB_PAWN_F_ENC:
-                node = do_move(piece_list, W_PAWN, 5, cb_position, CB_PAWN_F_ENC, node, tkn)
-            elif tkn in CB_PAWN_G_ENC:
-                node = do_move(piece_list, W_PAWN, 6, cb_position, CB_PAWN_G_ENC, node, tkn)
-            elif tkn in CB_PAWN_H_ENC:
-                node = do_move(piece_list, W_PAWN, 7, cb_position, CB_PAWN_H_ENC, node, tkn)
-        else:
-            if tkn in CB_KING_ENC:
-                node = do_move(piece_list, B_KING, 0, cb_position, CB_KING_ENC, node, tkn)
-            elif tkn in CB_QUEEN_1_ENC:
-                node = do_move(piece_list, B_QUEEN, 0, cb_position, CB_QUEEN_1_ENC, node, tkn)
-            elif tkn in CB_QUEEN_2_ENC:
-                node = do_move(piece_list, B_QUEEN, 1, cb_position, CB_QUEEN_2_ENC, node, tkn)
-            elif tkn in CB_QUEEN_3_ENC:
-                node = do_move(piece_list, B_QUEEN, 2, cb_position, CB_QUEEN_3_ENC, node, tkn)
-            elif tkn in CB_ROOK_1_ENC:
-                node = do_move(piece_list, B_ROOK, 0, cb_position, CB_ROOK_1_ENC, node, tkn)
-            elif tkn in CB_ROOK_2_ENC:
-                node = do_move(piece_list, B_ROOK, 1, cb_position, CB_ROOK_2_ENC, node, tkn)
-            elif tkn in CB_ROOK_3_ENC:
-                node = do_move(piece_list, B_ROOK, 2, cb_position, CB_ROOK_3_ENC, node, tkn)
-            elif tkn in CB_BISHOP_1_ENC:
-                node = do_move(piece_list, B_BISHOP, 0, cb_position, CB_BISHOP_1_ENC, node, tkn)
-            elif tkn in CB_BISHOP_2_ENC:
-                node = do_move(piece_list, B_BISHOP, 1, cb_position, CB_BISHOP_2_ENC, node, tkn)
-            elif tkn in CB_BISHOP_3_ENC:
-                node = do_move(piece_list, B_BISHOP, 2, cb_position, CB_BISHOP_3_ENC, node, tkn)
-            elif tkn in CB_KNIGHT_1_ENC:
-                node = do_move(piece_list, B_KNIGHT, 0, cb_position, CB_KNIGHT_1_ENC, node, tkn)
-            elif tkn in CB_KNIGHT_2_ENC:
-                node = do_move(piece_list, B_KNIGHT, 1, cb_position, CB_KNIGHT_2_ENC, node, tkn)
-            elif tkn in CB_KNIGHT_3_ENC:
-                node = do_move(piece_list, B_KNIGHT, 2, cb_position, CB_KNIGHT_3_ENC, node, tkn)
-            elif tkn in CB_PAWN_A_ENC:
-                node = do_move(piece_list, B_PAWN, 0, cb_position, CB_PAWN_A_ENC, node, tkn, pawn_flip=True)
-            elif tkn in CB_PAWN_B_ENC:
-                node = do_move(piece_list, B_PAWN, 1, cb_position, CB_PAWN_B_ENC, node, tkn, pawn_flip=True)
-            elif tkn in CB_PAWN_C_ENC:
-                node = do_move(piece_list, B_PAWN, 2, cb_position, CB_PAWN_C_ENC, node, tkn, pawn_flip=True)
-            elif tkn in CB_PAWN_D_ENC:
-                node = do_move(piece_list, B_PAWN, 3, cb_position, CB_PAWN_D_ENC, node, tkn, pawn_flip=True)
-            elif tkn in CB_PAWN_E_ENC:
-                node = do_move(piece_list, B_PAWN, 4, cb_position, CB_PAWN_E_ENC, node, tkn, pawn_flip=True)
-            elif tkn in CB_PAWN_F_ENC:
-                node = do_move(piece_list, B_PAWN, 5, cb_position, CB_PAWN_F_ENC, node, tkn, pawn_flip=True)
-            elif tkn in CB_PAWN_G_ENC:
-                node = do_move(piece_list, B_PAWN, 6, cb_position, CB_PAWN_G_ENC, node, tkn, pawn_flip=True)
-            elif tkn in CB_PAWN_H_ENC:
-                node = do_move(piece_list, B_PAWN, 7, cb_position, CB_PAWN_H_ENC, node, tkn, pawn_flip=True)
-        idx += 1
-    return game
+    except ValueError as e:
+        err_string = str(e)
+    except TypeError as e:
+        err_string = traceback.format_exc()
+    return game, err_string
