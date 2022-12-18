@@ -2,7 +2,7 @@
 
 ## About
 
-`cbh2pgn` is a small python script that converts chess databases 
+A small python script that converts chess databases 
 stored in the `.cbh` file format to `.pgn`. The tool is currently very limited:
 
 - converts only standard games - no `Chess960`
