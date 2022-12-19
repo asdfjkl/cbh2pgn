@@ -1,4 +1,7 @@
-# decode obfuscated game data
+# cbh2pgn converter
+# Copyright (c) 2022 Dominik Klein.
+# Licensed under MIT (see file LICENSE)
+
 import copy
 import struct
 import chess.pgn
@@ -28,22 +31,16 @@ def get_info_gamelen(cbg_file, offset):
                           - length of the game
     """
     size_info = struct.unpack(">I", cbg_file[offset:offset + 4])
-    #print([hex(x) for x in cbg_file[offset:offset + 4]])
-    #print(bin(size_info[0]))
-    game_setup_byte = 0 # for debugging
     if len(size_info) > 0:
-        game_setup_byte = size_info[0]
         not_initial = (size_info[0] & MASK_START_WITH_INITIAL) >> 30
         not_encoded = (size_info[0] & MASK_IS_ENCODED) >> 31
         special_encoding = (size_info[0] & MASK_SPECIAL_ENCODING) >> 26
-        #print("special_encoding")
-        #print(special_encoding)
         if (size_info[0] & MASK_IS_960) > 0:
             is_960 = 1
         else:
             is_960 = 0
         game_len = (size_info[0] & MASK_GAME_LEN)
-        return not_initial, not_encoded, is_960, special_encoding, game_setup_byte, game_len
+        return not_initial, not_encoded, is_960, special_encoding, game_len
     else:
         raise ValueError("get_info_gamelen: unable to extract size info from game file")
 
@@ -155,7 +152,6 @@ def decode_piece_locations(s):
                     l = len(w_bishops)
                     cb_position[i][j] = (W_BISHOP, l)
                     piece_list[W_BISHOP].append((i, j))
-                    # print("w bishop")
                 elif piece == '10101':
                     l = len(w_rooks)
                     cb_position[i][j] = (W_ROOK, l)
@@ -183,7 +179,6 @@ def decode_piece_locations(s):
                     l = len(b_rooks)
                     cb_position[i][j] = (B_ROOK, l)
                     piece_list[B_ROOK].append((i, j))
-                    # print("b rook")
                 elif piece == '11110':
                     l = len(b_pawns)
                     cb_position[i][j] = (B_PAWN, l)
@@ -194,7 +189,7 @@ def decode_piece_locations(s):
                 s_idx += 5
                 b_idx += 1
     # make sure that all piece lists have 8 elements
-    # will make denote pieces down later easier
+    # will make demoting pieces down later easier
     for i in range(W_QUEEN, B_ROOK+1):
         l = len(piece_list[i])
         for j in range(l, 8):
@@ -254,7 +249,6 @@ def cb_pos_to_fen(cb_position, ep_file, is_blacks_turn, w_long, w_short, b_long,
                     fen += "p"
         if square_counter > 0:
             fen += str(square_counter)
-            square_counter = 0
         fen += "/"
     fen = fen[:-1]  # remove last '/'
     if is_blacks_turn:
@@ -710,7 +704,6 @@ def do_move(piece_list, piece_type, piece_nr, cb_position, cb_enc_arr, node, tkn
         cb_position[7][0] = (0, None)
         for idx in range(0, len(piece_list[W_ROOK])):
             if piece_list[W_ROOK][idx] == (7,0):
-                #print("setting rook")
                 piece_list[W_ROOK][idx] = (5,0)
                 cb_position[5][0] = (W_ROOK, idx)
                 break
@@ -803,14 +796,10 @@ def do_2b_move(piece_list, i, j, i1, j1, cb_position, node, cb_promotion_code):
             else:
                 raise ValueError("unknown promotion piece type")
     if promoted_piece_type != 0:
-        #print("promoting a pawn...")
         # find first free piece nr
         for free_idx in range(0,8):
             if piece_list[promoted_piece_type][free_idx] is None:
                 break
-        #print("free index for new piece: "+str(free_idx))
-        #print("b queen piece list:")
-        #print(piece_list[B_QUEEN])
         piece_list[promoted_piece_type][free_idx] = (i1,j1)
         cb_position[i1][j1] = (promoted_piece_type, free_idx)
     m = chess.Move.from_uci(SQN[i][j] + SQN[i1][j1] + promotion_str)
@@ -910,11 +899,6 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
     :param fen: FEN string of the starting position. If not supplied we assume the starting position
     :return: python chess game (tree)
     """
-    #print([hex(x) for x in game_bytes])
-    #z = 0
-    #for k in range(0,10):
-    #    print(hex(game_bytes[k]-z))
-    #    z+=1
     stack = []
     processed_moves = 0
     game = chess.pgn.Game()
@@ -927,15 +911,6 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
     try:
         while idx < len(game_bytes):
             tkn = (game_bytes[idx] - processed_moves) % 256
-            #print("token: "+str(hex(tkn)))
-            #print("peek: ")
-            #print(game_bytes[idx:])
-            #print(game_bytes[idx+1:])
-            #print((game_bytes[idx+1]-processed_moves) % 256)
-            #print((game_bytes[idx + 2] - processed_moves) % 256)
-            #print(game)
-            #print_cb_position(cb_position)
-            #print("")
             if tkn not in SPECIAL_CODES:
                 # only inc move counter if
                 # it is not a special code
@@ -960,9 +935,8 @@ def decode(game_bytes, cb_position, piece_list, fen=None):
                 src = move_2b & 0x3F
                 dst = (move_2b >> 6) & 0x3F
                 promotion_piece = (move_2b >> 12) & 0x3
-                x,y = ABS_TO_XY[src]
-                x1,y1 = ABS_TO_XY[dst]
-                #print(SQN[x][y])
+                x, y = ABS_TO_XY[src]
+                x1, y1 = ABS_TO_XY[dst]
                 node = do_2b_move(piece_list, x, y, x1, y1, cb_position, node, promotion_piece)
                 processed_moves += 1
                 processed_moves %= 256

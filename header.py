@@ -1,4 +1,7 @@
-# decode header data file
+# cbh2pgn converter
+# Copyright (c) 2022 Dominik Klein.
+# Licensed under MIT (see file LICENSE)
+
 import struct
 
 MASK_IS_GAME = int('00000001', 2)
@@ -70,7 +73,6 @@ def get_tournament_offset(cbh_record):
 
 
 def get_game_offset(cbh_record):
-    #print([hex(x) for x in cbh_record[1:5]])
     game_offset_int = struct.unpack(">I", bytearray(cbh_record[1:5]))
     if len(game_offset_int) > 0:
         return game_offset_int[0]

@@ -1,3 +1,7 @@
+# cbh2pgn converter
+# Copyright (c) 2022 Dominik Klein.
+# Licensed under MIT (see file LICENSE)
+
 import mmap
 from binascii import hexlify
 import game
@@ -63,9 +67,9 @@ header_id = header_bytes[0:6]
 print("")
 print("header id: " + to_hex(header_id))
 if to_hex(header_id) == "00002c002e01":
-    print("created by Chessbase9+?!")
+    print("created by CB9+?!")
 if to_hex(header_id) == "000024002e01":
-    print("created by Fritz/CB Light?!")
+    print("created by Chess Program X/CB Light?!")
 print("")
 pgn_out = open(filename_out, 'w', encoding="utf-8")
 exporter = chess.pgn.FileExporter(pgn_out)
@@ -86,13 +90,9 @@ for i in tqdm(range(1, nr_records)):
     # get player names
     offset_white = header.get_whiteplayer_offset(cbh_record)
     white_player_name = player.get_name(cbp_file, offset_white)
-    #print("white player")
-    #print(white_player_name)
 
     offset_black = header.get_blackplayer_offset(cbh_record)
     black_player_name = player.get_name(cbp_file, offset_black)
-    #print("black player")
-    #print(black_player_name)
 
     # get date
     yy, mm, dd = header.get_yymmdd(cbh_record)
@@ -111,8 +111,6 @@ for i in tqdm(range(1, nr_records)):
         pgn_yymmdd += "{:02d}".format(dd)
     else:
         pgn_yymmdd += "??"
-    #print("yymmdd")
-    #print(pgn_yymmdd)
 
     # get result
     pgn_res = header.get_result(cbh_record)
@@ -127,29 +125,14 @@ for i in tqdm(range(1, nr_records)):
     w_elo, b_elo = header.get_ratings(cbh_record)
 
     # get game offset
-    #print("cbh record:")
-    #print([ hex(x) for x in cbh_record])
     game_offset = header.get_game_offset(cbh_record)
 
-    # if header.is_game(cbh_record):
-    #    print("game bit is set")
-    # else:
-    #    print("game bit is NOT set (not a game?)")
+    not_initial, not_encoded, is_960, special_encoding, game_len = game.get_info_gamelen(cbg_file, game_offset)
 
-    # if header.is_marked_as_deleted(cbh_record):
-    #    print("game is marked for deletion")
-    # else:
-    #    print("game is NOT marked for deletion")
-
-    not_initial, not_encoded, is_960, special_encoding, setup_byte, game_len = game.get_info_gamelen(cbg_file,
-                                                                                                     game_offset)
-
-    #print(not_encoded)
+    # cbg_file[game_offset] is the byte that stores various game encoding and setup information
+    # which is useful for debugging
     if special_encoding:
         errors_encountered.append((i, hex(cbg_file[game_offset]), "ignored: special encoding flag"))
-
-    #print("special encoding: "+str(special_encoding))
-    #print("not encoded: "+str(not_encoded))
 
     pgn_game = None
     if header.is_game(cbh_record) and (not header.is_marked_as_deleted(cbh_record)) \
@@ -157,7 +140,6 @@ for i in tqdm(range(1, nr_records)):
         # cbg header is 26, after that game starts
         if not_initial:
             fen, cb_position, piece_list = game.decode_start_position(cbg_file, game_offset)
-            #print("not initial")
             pgn_game, err_string = game.decode(cbg_file[game_offset + 4 + 28:game_offset + game_len], cb_position,
                                                piece_list, fen=fen)
             if not (err_string is None):
@@ -197,12 +179,6 @@ for i in tqdm(range(1, nr_records)):
                           [(4, 7)],  # black king
                           [(0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1)],  # white pawns
                           [(0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (5, 6), (6, 6), (7, 6)]]  # black pawns
-            #print("game as read from header: ")
-            #print([hex(x) for x in cbg_file[game_offset + 4:game_offset + game_len]])
-            #print("len: ")
-            #print(len(cbg_file[game_offset + 4:game_offset + game_len]))
-            #print("from game_offset - 4: ... ")
-            #print([hex(x) for x in cbg_file[game_offset - 4:game_offset + game_len]])
             pgn_game, err_string = game.decode(cbg_file[game_offset + 4:game_offset + game_len], cb_position, piece_list)
             if not (err_string is None):
                 errors_encountered.append((i, hex(cbg_file[game_offset]), err_string))

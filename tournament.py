@@ -1,4 +1,6 @@
-# decode tournament data file
+# cbh2pgn converter
+# Copyright (c) 2022 Dominik Klein.
+# Licensed under MIT (see file LICENSE)
 
 def get_event_site_totalrounds(cbt_file, tournament_no):
     if cbt_file[0x18] == 4:
