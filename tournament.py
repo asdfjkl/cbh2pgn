@@ -13,12 +13,12 @@ def get_event_site_totalrounds(cbt_file, tournament_no):
     record = cbt_file[record_offset:record_offset+99]
 
     title_bytes = record[9:9+40]
-    tmp = title_bytes.decode("iso-8859-1").split('\x00')
+    tmp = title_bytes.decode("utf-8", errors="replace").split('\x00')
     if len(tmp) > 0:
         title = tmp[0]
 
     place_bytes = record[49:49 + 30]
-    tmp = place_bytes.decode("iso-8859-1").split('\x00')
+    tmp = place_bytes.decode("utf-8", errors="replace").split('\x00')
     if len(tmp) > 0:
         place = tmp[0]
 
