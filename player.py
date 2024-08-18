@@ -10,12 +10,12 @@ def get_name(cbp_file, player_no):
     else:
         raise ValueError("unknown CBP file version")
     last_name_bytes = cbp_file[record_offset + 9:record_offset + 9 + 30]
-    tmp = last_name_bytes.decode("iso-8859-1").split('\x00')
+    tmp = last_name_bytes.decode("utf-8", errors="replace").split('\x00')
     if len(tmp) > 0:
         last_name = tmp[0]
 
     first_name_bytes = cbp_file[record_offset + 39:record_offset + 39 + 20]
-    tmp = first_name_bytes.decode("iso-8859-1").split('\x00')
+    tmp = first_name_bytes.decode("utf-8", errors="replace").split('\x00')
     if len(tmp) > 0:
         first_name = tmp[0]
 
